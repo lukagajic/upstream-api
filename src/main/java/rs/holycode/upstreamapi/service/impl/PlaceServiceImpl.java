@@ -8,8 +8,12 @@ import rs.holycode.upstreamapi.dto.request.OpeningHoursRange;
 import rs.holycode.upstreamapi.dto.request.PlaceRequestDto;
 import rs.holycode.upstreamapi.dto.response.PlaceResponseDto;
 import rs.holycode.upstreamapi.service.PlaceService;
+import rs.holycode.upstreamapi.util.DateUtil;
 
 import java.time.DayOfWeek;
+import java.time.LocalDate;
+import java.time.LocalDateTime;
+import java.time.LocalTime;
 import java.time.format.TextStyle;
 import java.util.*;
 import java.util.stream.Collectors;
@@ -28,8 +32,12 @@ public class PlaceServiceImpl implements PlaceService {
         placeResponse.setPlaceName(request.getName());
         placeResponse.setPlaceAddress(request.getAddress());
 
-        var openingHoursByDays = request.getOpeningHours().getDays();
+
+        LinkedHashMap<String, List<OpeningHoursRange>> openingHoursByDays = request.getOpeningHours().getDays();
         LinkedHashMap<String, List<String>> openingHoursFlat = new LinkedHashMap<>();
+
+        placeResponse.setCurrentlyOpen(true);
+        placeResponse.setCurrentlyOpen(isPlaceOpenNow(request.getOpeningHours().getDays()));
 
         List<String> daysRange = new ArrayList<>();
         List<String> skippedDays = new ArrayList<>();
@@ -88,5 +96,42 @@ public class PlaceServiceImpl implements PlaceService {
         placeResponse.setOpeningHours(openingHoursFlat);
 
         return placeResponse;
+    }
+
+    private LocalDateTime getOpeningOrClosingDateTime(LinkedHashMap<String, List<OpeningHoursRange>> openingHoursByDays, boolean isOpen) {
+        List<OpeningHoursRange> openingHoursByDay = openingHoursByDays.getOrDefault(DateUtil.getCurrentDayOfWeekAsString(), Collections.emptyList());
+        LocalTime current = LocalTime.now();
+
+        if (isOpen) {
+            return openingHoursByDay.stream().filter(range -> {
+                        LocalTime start = LocalTime.parse(range.getStart());
+                        LocalTime end = LocalTime.parse(range.getEnd());
+
+                        return (current.equals(start) || current.isAfter(start)) && current.isBefore(end);
+                    }).findFirst()
+                    .map(openingHoursRange -> LocalDateTime.of(LocalDate.now(), LocalTime.parse(openingHoursRange.getEnd())))
+                    .orElse(null);
+        } else {
+            return null;
+        }
+    }
+
+
+    private boolean isPlaceOpenNow(LinkedHashMap<String, List<OpeningHoursRange>> openingHoursByDays) {
+        List<OpeningHoursRange> openingHoursByDay = openingHoursByDays.getOrDefault(DateUtil.getCurrentDayOfWeekAsString(), Collections.emptyList());
+
+        if (openingHoursByDay.isEmpty()) {
+            return false;
+        }
+
+        LocalTime current = LocalTime.now();
+
+        return openingHoursByDay.stream().filter(range -> {
+                    LocalTime start = LocalTime.parse(range.getStart());
+                    LocalTime end = LocalTime.parse(range.getEnd());
+
+                    return (current.equals(start) || current.isAfter(start)) && current.isBefore(end);
+                }).findFirst()
+                .isPresent();
     }
 }
